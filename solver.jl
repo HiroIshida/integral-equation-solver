@@ -50,26 +50,27 @@ function build_matrix(mc::MonteCarlo, pdf_target, Nx, Ny)
     # least squares optimization with equality constraints
     A = data_normalized'*dx
     b = [pdf_target(y) for y in make_grid_pts(Ny, y_min, y_max)]
+    #w_opt = (inv(A'*A)*A'+eye(Nx)*0)*b
+    b = [pdf_target(y) for y in make_grid_pts(Ny, y_min, y_max)]
     C = ones(Nx)
     w = Variable(Nx)
-    objective = sumsquares(A*w-b)
-    #constraints = [C'*w-1 == 0; w>0]
+    λ = 0.001
+    objective = sumsquares(A*w-b) + λ*sumsquares(w)
     constraints = [w>0; sum(w*dx) == 1]
     problem = minimize(objective, constraints)
     solve!(problem, SCSSolver())
     w_opt = w.value
-    #w_opt = [normpdf(x, 0, 2*sqrt(2)) for x in x_grid_lst]
-    plot(make_grid_pts(Ny, y_min, y_max), b)
+    plot(x_grid_lst, [normpdf(x, 0, 2*sqrt(2)) for x in x_grid_lst])
     plot(x_grid_lst, w_opt)
 end
 
 function test()
     npdf(x) = x + randn()
-    mc = MonteCarlo(npdf, -10, 10)
+    mc = MonteCarlo(npdf, -25, 25)
     sigma = 3
     pdf_t(x) = 1/sqrt(2*pi*sigma^2)*exp(-(x-0)^2/(2*sigma^2))
-    Nx = 50
-    Ny = 50
+    Nx = 200
+    Ny = 200
     mat = build_matrix(mc, pdf_t, Nx, Ny)
 end
 mat = test()
