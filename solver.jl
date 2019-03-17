@@ -16,58 +16,66 @@ end
 function solve_integral_equation(func_mc, pdf_target, x_min, x_max, Nx, Ny)
 
     eps = 1e-3
-    N_trial = 30000
+    N_trial = 10000
 
     println("start mc")
     x_grid_lst = make_grid_pts(Nx, x_min, x_max)
     pt_result_lst = Vector{Float64}[]
     y_min = Inf; y_max = -Inf
     for x_grid in x_grid_lst
+        println(x_grid)
         for _ in 1:N_trial
             y = func_mc(x_grid)
-            y < y_min && (y_min = y - eps)
-            y > y_max && (y_max = y + eps)
-            push!(pt_result_lst, [x_grid, y])
+            if y != Inf
+                y < y_min && (y_min = y - eps)
+                y > y_max && (y_max = y + eps)
+                push!(pt_result_lst, [x_grid, y])
+            end
         end
     end
+    y_min -= 20
+    y_max += 20
     mesh = Grid2d([Nx, Ny], [x_min, y_min], [x_max, y_max])
     data = collect_pts(mesh, pt_result_lst)
     println("finish mc")
 
+    # M_{i, j] = p(y_j|x_i) 
     data_normalized = zeros(Nx, Ny)
     dx = (x_max - x_min)/Nx
+    dy = (y_max - y_min)/Ny
     for i in 1:Nx
-        data_normalized[i, :] = data[i, :]/sum(data[i, :])/dx
+        data_normalized[i, :] = data[i, :]/sum(data[i, :])/dy
     end
 
     # then we can formulate integral-equation solving as 
     # least squares optimization with equality constraints
-    A = data_normalized'*dx
-    b = [pdf_target(y) for y in make_grid_pts(Ny, y_min, y_max)]
+    A = data_normalized'
+    y_grid_lst = make_grid_pts(Ny, y_min, y_max)
+    b = [pdf_target(y) for y in y_grid_lst]
     C = ones(Nx)
     w = Variable(Nx)
-    λ = 0.001
-    objective = sumsquares(A*w-b) + λ*sumsquares(w)
+    λ = 0.005
+    objective = sumsquares(A*w*dx-b) + λ*sumsquares(w)
     constraints = [w>0; sum(w*dx) == 1]
     problem = minimize(objective, constraints)
+    println("start solving")
     solve!(problem, SCSSolver())
     w_opt = w.value
-    #=
-    plot(x_grid_lst, [normpdf(x, 0, 2*sqrt(2)) for x in x_grid_lst])
-    plot(x_grid_lst, w_opt)
-    xlim(-15, 15)
-    =#
-    return x_grid_lst, w_opt
+    return x_grid_lst, y_grid_lst, w_opt, A
 end
 
 function test()
+
     npdf(x) = x + randn()
     func_mc = npdf
     x_min = -150
     x_max = 150
-    sigma = 3
+    sigma = 10
     pdf_t(x) = 1/sqrt(2*pi*sigma^2)*exp(-(x-0)^2/(2*sigma^2))
-    Nx = 1000
-    Ny = 1000
-    x_lst, w_lst = solve(func_mc, pdf_t, x_min, x_max, Nx, Ny)
+    Nx = 300
+    Ny = 300
+    x_lst, y_lst, w_opt, A = solve_integral_equation(func_mc, pdf_t, x_min, x_max, Nx, Ny)
+    PyPlot.plot(y_lst, [pdf_t(y) for y in y_lst])
+    PyPlot.plot(y_lst, A*w_opt)
 end
+#mat = test()
